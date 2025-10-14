@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-"""
-CloudFormation Security Enhancement Script - Fixed Version
-自動為 S3 Buckets 添加 KMS 加密、為 EC2 添加加密 EBS 卷、為 Lambda 添加加密存儲
-"""
 import yaml
 import json
 import sys
@@ -11,16 +7,12 @@ from pathlib import Path
 from collections import OrderedDict
 
 
-# CloudFormation 內建函數處理
 class CFNTag:
-    """CloudFormation 內建函數的通用類別"""
-
     def __init__(self, value):
         self.value = value
 
 
 def cfn_constructor(loader, tag_suffix, node):
-    """處理 CloudFormation 標籤 (如 !Ref, !GetAtt, !Sub 等)"""
     if isinstance(node, yaml.ScalarNode):
         value = loader.construct_scalar(node)
     elif isinstance(node, yaml.SequenceNode):
@@ -30,7 +22,6 @@ def cfn_constructor(loader, tag_suffix, node):
     else:
         value = None
 
-    # 轉換為 CloudFormation 的字典格式
     tag_name = tag_suffix
     if tag_name == 'Ref':
         return {'Ref': value}
@@ -40,16 +31,13 @@ def cfn_constructor(loader, tag_suffix, node):
             return {'Fn::GetAtt': parts if len(parts) == 2 else [value]}
         return {'Fn::GetAtt': value}
     else:
-        # 其他函數如 !Sub, !Join, !Select 等
         fn_name = f"Fn::{tag_name}"
         return {fn_name: value}
 
 
-# 註冊 CloudFormation 標籤處理器
 yaml.add_multi_constructor('!', cfn_constructor, Loader=yaml.SafeLoader)
 
 
-# 為 YAML 輸出添加 OrderedDict 支援
 def represent_ordereddict(dumper, data):
     return dumper.represent_mapping('tag:yaml.org,2002:map', data.items())
 
@@ -65,14 +53,12 @@ class CFNSecurityEnhancer:
         self.buckets_enhanced = []
 
     def load_template(self):
-        """載入 CloudFormation 模板"""
         with open(self.template_path, 'r', encoding='utf-8-sig') as f:
             content = f.read().strip()
 
         if not content:
             raise ValueError(f"檔案 {self.template_path} 是空的")
 
-        # 優先用 YAML 解析
         try:
             self.template = yaml.safe_load(content)
             if self.template is None:
@@ -82,7 +68,6 @@ class CFNSecurityEnhancer:
         except yaml.YAMLError as e:
             print(f"⚠️ YAML 解析失敗，嘗試 JSON... ({e})")
 
-        # 嘗試 JSON 解析
         try:
             self.template = json.loads(content)
             print(f"✓ 成功以 JSON 格式解析模板: {self.template_path}")
@@ -95,7 +80,6 @@ class CFNSecurityEnhancer:
             )
 
     def create_customer_data_kms_key(self):
-        """創建 CustomerData KMS Key"""
         key_resource = {
             'Type': 'AWS::KMS::Key',
             'Properties': {
@@ -132,7 +116,6 @@ class CFNSecurityEnhancer:
         return key_resource, alias_resource
 
     def create_ml_models_kms_key(self):
-        """創建 MLModels KMS Key"""
         key_resource = {
             'Type': 'AWS::KMS::Key',
             'Properties': {
@@ -176,7 +159,6 @@ class CFNSecurityEnhancer:
         return key_resource, alias_resource
 
     def create_analytics_kms_keys(self):
-        """創建 Analytics KMS Keys（高敏感度和標準）"""
         high_key = {
             'Type': 'AWS::KMS::Key',
             'Properties': {
@@ -246,7 +228,6 @@ class CFNSecurityEnhancer:
         return (high_key, high_alias, standard_key, standard_alias)
 
     def create_ebs_kms_key(self):
-        """創建 EBS KMS Key"""
         key_resource = {
             'Type': 'AWS::KMS::Key',
             'Properties': {
@@ -291,10 +272,8 @@ class CFNSecurityEnhancer:
         return key_resource, alias_resource
 
     def enhance_customer_data_bucket(self, bucket_config):
-        """增強 CustomerDataBucket"""
         properties = bucket_config.get('Properties', {})
 
-        # 檢查現有加密
         existing_encryption = properties.get('BucketEncryption', {})
         if existing_encryption:
             sse_config = existing_encryption.get('ServerSideEncryptionConfiguration', [{}])
@@ -316,7 +295,6 @@ class CFNSecurityEnhancer:
             ]
         }
 
-        # 更新 Tags
         if 'Tags' not in properties:
             properties['Tags'] = []
 
@@ -329,10 +307,8 @@ class CFNSecurityEnhancer:
         return True
 
     def enhance_ml_models_bucket(self, bucket_config):
-        """增強 MLModelsBucket"""
         properties = bucket_config.get('Properties', {})
 
-        # 檢查現有加密
         current_encryption = properties.get('BucketEncryption', {}).get(
             'ServerSideEncryptionConfiguration', [{}]
         )[0].get('ServerSideEncryptionByDefault', {})
@@ -369,10 +345,8 @@ class CFNSecurityEnhancer:
         return True
 
     def enhance_analytics_data_bucket(self, bucket_config):
-        """增強 AnalyticsDataBucket（含 replication 配置）"""
         properties = bucket_config.get('Properties', {})
 
-        # 檢查現有加密
         existing_encryption = properties.get('BucketEncryption', {})
         if existing_encryption:
             current_key = existing_encryption.get('ServerSideEncryptionConfiguration', [{}])[0].get(
@@ -395,7 +369,6 @@ class CFNSecurityEnhancer:
             ]
         }
 
-        # 更新 Replication 配置
         if 'ReplicationConfiguration' in properties:
             repl_config = properties['ReplicationConfiguration']
             rules = repl_config.get('Rules', [])
@@ -421,7 +394,6 @@ class CFNSecurityEnhancer:
                     rule['SourceSelectionCriteria'] = {}
                 rule['SourceSelectionCriteria']['SseKmsEncryptedObjects'] = {'Status': 'Enabled'}
 
-        # 更新 Tags
         if 'Tags' not in properties:
             properties['Tags'] = []
 
@@ -434,7 +406,6 @@ class CFNSecurityEnhancer:
         return True
 
     def enhance_analytics_backup_bucket(self, bucket_config):
-        """增強 AnalyticsBackupBucket"""
         properties = bucket_config.get('Properties', {})
 
         if 'BucketEncryption' in properties:
@@ -467,7 +438,6 @@ class CFNSecurityEnhancer:
         return True
 
     def enhance_ec2_instance(self, instance_config):
-        """為 EC2 Instance 添加加密 EBS 卷"""
         properties = instance_config.get('Properties', {})
 
         if 'BlockDeviceMappings' in properties:
@@ -513,7 +483,6 @@ class CFNSecurityEnhancer:
         return True
 
     def enhance_lambda_function(self, function_config):
-        """為 Lambda Function 添加臨時存儲加密"""
         properties = function_config.get('Properties', {})
 
         if 'EphemeralStorage' in properties:
@@ -543,11 +512,9 @@ class CFNSecurityEnhancer:
         return True
 
     def update_iam_permissions(self):
-        """統一更新所有 IAM 相關權限"""
         resources = self.template.get('Resources', {})
         updated = []
 
-        # DataProcessingRole
         if 'DataProcessingRole' in resources:
             role = resources['DataProcessingRole']
             properties = role.get('Properties', {})
@@ -575,7 +542,6 @@ class CFNSecurityEnhancer:
                 })
                 updated.append('DataProcessingRole')
 
-        # ThirdPartyIntegrationRole
         if 'ThirdPartyIntegrationRole' in resources:
             role = resources['ThirdPartyIntegrationRole']
             properties = role.get('Properties', {})
@@ -596,7 +562,6 @@ class CFNSecurityEnhancer:
                         updated.append('ThirdPartyIntegrationRole')
                     break
 
-        # S3ReplicationRole
         if 'S3ReplicationRole' in resources:
             role = resources['S3ReplicationRole']
             properties = role.get('Properties', {})
@@ -617,7 +582,6 @@ class CFNSecurityEnhancer:
                         updated.append('S3ReplicationRole')
                     break
 
-        # DataScientistUser
         if 'DataScientistUser' in resources:
             user = resources['DataScientistUser']
             properties = user.get('Properties', {})
@@ -638,7 +602,6 @@ class CFNSecurityEnhancer:
                         updated.append('DataScientistUser')
                     break
 
-        # DataScientistsGroup
         if 'DataScientistsGroup' in resources:
             group = resources['DataScientistsGroup']
             properties = group.get('Properties', {})
@@ -662,13 +625,11 @@ class CFNSecurityEnhancer:
         return updated
 
     def update_outputs(self):
-        """更新 Outputs 添加 KMS 信息"""
         if 'Outputs' not in self.template:
             self.template['Outputs'] = {}
 
         outputs = self.template['Outputs']
 
-        # 更新現有 Bucket 的 Description
         bucket_updates = {
             'CustomerDataBucketName': 'Now with KMS encryption',
             'MLModelsBucketName': 'Now with KMS encryption and key policy',
@@ -681,7 +642,6 @@ class CFNSecurityEnhancer:
                 if suffix not in desc:
                     outputs[output_name]['Description'] = f"{desc} - {suffix}"
 
-        # 添加 KMS Key Outputs
         kms_outputs = {
             'CustomerDataKMSKeyId': {
                 'Description': 'KMS Key ID for Customer Data Bucket',
@@ -714,7 +674,6 @@ class CFNSecurityEnhancer:
             if key not in outputs:
                 outputs[key] = value
 
-        # 添加加密改進摘要
         if 'EncryptionImprovements' not in outputs:
             improvements = ('CustomerDataBucket: KMS-CMK | MLModelsBucket: KMS-CMK with key policy | '
                             'AnalyticsDataBucket: Tiered KMS encryption | EC2: Encrypted EBS volumes | '
@@ -725,7 +684,6 @@ class CFNSecurityEnhancer:
             }
 
     def enhance_template(self):
-        """執行完整的安全增強"""
         print("\n=== 開始安全增強 ===\n")
 
         resources = self.template.get('Resources', {})
@@ -733,7 +691,6 @@ class CFNSecurityEnhancer:
             print("❌ 模板中沒有 Resources")
             return
 
-        # Step 1: 創建 KMS Keys
         print("1. 創建 KMS Keys...")
         new_resources = OrderedDict()
 
@@ -760,14 +717,12 @@ class CFNSecurityEnhancer:
         new_resources['EBSEncryptionKeyAlias'] = ebs_alias
         print("  ✓ EBSEncryptionKey")
 
-        # Step 2: 將 KMS Keys 插入到 Resources 開頭
         print("\n2. 插入 KMS Keys 到模板...")
         updated_resources = OrderedDict()
         updated_resources.update(new_resources)
         updated_resources.update(resources)
         self.template['Resources'] = updated_resources
 
-        # Step 3: 增強 S3 Buckets
         print("\n3. 處理 S3 Buckets...")
         resources = self.template['Resources']
 
@@ -787,27 +742,22 @@ class CFNSecurityEnhancer:
             if self.enhance_analytics_backup_bucket(resources['AnalyticsBackupBucket']):
                 self.buckets_enhanced.append('AnalyticsBackupBucket')
 
-        # Step 4: 增強 EC2
         print("\n4. 處理 EC2 Instances...")
         if 'DataAnalysisInstance' in resources:
             self.enhance_ec2_instance(resources['DataAnalysisInstance'])
 
-        # Step 5: 增強 Lambda
         print("\n5. 處理 Lambda Functions...")
         if 'DataProcessingFunction' in resources:
             self.enhance_lambda_function(resources['DataProcessingFunction'])
 
-        # Step 6: 更新 IAM 權限
         print("\n6. 更新 IAM 權限...")
         iam_updated = self.update_iam_permissions()
         if iam_updated:
             print(f"  ✓ 已更新: {', '.join(iam_updated)}")
 
-        # Step 7: 更新 Outputs
         print("\n7. 更新 Outputs...")
         self.update_outputs()
 
-        # Step 8: 更新 Description
         if 'Description' in self.template:
             desc = self.template['Description']
             if 'Enhanced Encryption' not in desc:
@@ -826,7 +776,6 @@ class CFNSecurityEnhancer:
         print(f"  • 更新了 Outputs 和 Description\n")
 
     def save_template(self, output_path=None):
-        """儲存增強後的模板"""
         if output_path is None:
             output_path = self.template_path.parent / f"{self.template_path.stem}_enhanced{self.template_path.suffix}"
 
@@ -835,7 +784,6 @@ class CFNSecurityEnhancer:
 
         with open(output_path, 'w', encoding='utf-8') as f:
             if output_path.suffix in ['.yaml', '.yml']:
-                # 使用自定義的 dumper 來處理 CloudFormation 函數
                 yaml.dump(
                     self.template,
                     f,
@@ -853,30 +801,25 @@ class CFNSecurityEnhancer:
         return output_path
 
 
-# CloudFormation YAML Dumper - 將字典轉回 CloudFormation 標籤格式
 class CFNYAMLDumper(yaml.SafeDumper):
     pass
 
 
 def represent_cfn_function(dumper, data):
-    """將 CloudFormation 函數字典轉換回 YAML 標籤格式"""
     if not isinstance(data, dict) or len(data) != 1:
         return dumper.represent_dict(data)
 
     key = list(data.keys())[0]
     value = data[key]
 
-    # 處理 Ref
     if key == 'Ref':
         return dumper.represent_scalar('!Ref', value)
 
-    # 處理 Fn::GetAtt
     elif key == 'Fn::GetAtt':
         if isinstance(value, list) and len(value) == 2:
             return dumper.represent_scalar('!GetAtt', f'{value[0]}.{value[1]}')
         return dumper.represent_scalar('!GetAtt', str(value))
 
-    # 處理其他 Fn:: 函數
     elif key.startswith('Fn::'):
         tag_name = key.replace('Fn::', '')
         if isinstance(value, (str, int, float, bool)):
@@ -886,7 +829,6 @@ def represent_cfn_function(dumper, data):
         elif isinstance(value, dict):
             return dumper.represent_mapping(f'!{tag_name}', value)
 
-    # 預設處理
     return dumper.represent_dict(data)
 
 
