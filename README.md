@@ -118,14 +118,3 @@ python cfn_security_enhancer.py template.json -o secure-template.json
 - **輸入**：YAML (.yaml, .yml) 或 JSON (.json) 格式的 CloudFormation 模板
 - **輸出**：與輸入格式相同的增強型模板
 
-## 許可
-
-MIT License
-
-## 貢獻
-
-歡迎提交 Issue 和 Pull Request！
-
-## 免責聲明
-
-此工具生成的模板僅供參考。使用者應在部署至生產環境前進行完整的安全審查和測試。作者對使用本工具造成的任何損失或損害不承擔責任。
